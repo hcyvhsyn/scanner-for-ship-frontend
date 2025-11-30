@@ -1,4 +1,6 @@
 import Head from "next/head";
+import Image from "next/image";
+import Link from "next/link";
 import React from "react";
 
 export default function LoginPage() {
@@ -27,6 +29,18 @@ export default function LoginPage() {
             </p>
           </div>
 
+          <div className="mb-6 overflow-hidden rounded-2xl border border-white/15 shadow-lg">
+            <Image
+              src="/images/kds.png"
+              alt="Karadeniz Powership Rauf Bey"
+              width={640}
+              height={320}
+              className="h-40 w-full object-cover"
+              priority
+            />
+            
+          </div>
+
           <form className="space-y-5">
             <label className="block text-sm font-medium text-white/90">
               Email
@@ -50,9 +64,11 @@ export default function LoginPage() {
               />
             </div>
           </form>
-          <button className="mt-6 w-full rounded-xl bg-white py-3 text-sm font-semibold text-[#0f172a] shadow-lg transition hover:-translate-y-0.5 hover:bg-gray-100">
-            Continue
-          </button>
+          <Link href="/main">
+            <button className="mt-6 w-full rounded-xl bg-white py-3 text-sm font-semibold text-[#0f172a] shadow-lg transition hover:-translate-y-0.5 hover:bg-gray-100">
+              Continue
+            </button>
+          </Link>
         </div>
       </div>
     </>
