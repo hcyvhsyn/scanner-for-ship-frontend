@@ -173,7 +173,6 @@ export default function QRCodeGeneratorPage() {
   const showLibrarySection = workers.length > 0;
   const showLibrarySkeleton =
     isWorkersLoading && workers.length === 0 && !workersError;
-  const shouldScroll = workers.length > 4;
 
   const handleGenerate = async () => {
     const trimmedName = fullName.trim();
@@ -352,7 +351,7 @@ export default function QRCodeGeneratorPage() {
         )}
 
         {showLibrarySection && (
-          <section className="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-black/5">
+          <section className="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-black/5 h-full">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-[#475467]">
@@ -378,14 +377,7 @@ export default function QRCodeGeneratorPage() {
               </div>
             </div>
 
-            <div
-              className={`mt-4 space-y-3 ${shouldScroll ? "pr-2" : ""}`}
-              style={
-                shouldScroll
-                  ? { maxHeight: "60vh", overflowY: "auto" }
-                  : undefined
-              }
-            >
+            <div className="mt-4 space-y-3">
               {isWorkersLoading && workers.length === 0 ? (
                 <p className="text-sm text-[#98A2B3]">Loading employees...</p>
               ) : !workers.length ? (
