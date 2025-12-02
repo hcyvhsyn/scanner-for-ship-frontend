@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_BASE_API_URL;
+const apiBaseUrl = process.env.prodNEXT_PUBLIC_BASE_API_URL;
 const TOKEN_STORAGE_KEY = "kds-token";
 
 const getFeedbackStatus = (text) => {
@@ -129,7 +129,7 @@ export default function QRCodeScanPage() {
 
       try {
         if (!apiBaseUrl) {
-          throw new Error("API base URL is missing. Please check .env.local.");
+          throw new Error("API base URL is missing. Please check .env.prodlocal.");
         }
         if (!authToken) {
           throw new Error("Authentication credentials were not provided.");

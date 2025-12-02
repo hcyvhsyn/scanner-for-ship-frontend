@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_BASE_API_URL;
+const apiBaseUrl = process.env.prodNEXT_PUBLIC_BASE_API_URL;
 const TOKEN_STORAGE_KEY = "kds-token";
 
 const formatDate = (value) => {
@@ -80,7 +80,7 @@ export default function ListPage() {
   const fetchScannedUsers = useCallback(
     async (requestedPage = pagination.page) => {
       if (!apiBaseUrl) {
-        setErrorMessage("API base URL is missing. Please check .env.local.");
+        setErrorMessage("API base URL is missing. Please check .env.prodlocal.");
         return;
       }
       if (!authToken) {
@@ -187,7 +187,7 @@ export default function ListPage() {
   // --- EXCEL EXPORT ---
   const handleExport = async () => {
     if (!apiBaseUrl) {
-      setErrorMessage("API base URL is missing. Please check .env.local.");
+      setErrorMessage("API base URL is missing. Please check .env.prodlocal.");
       return;
     }
     if (!authToken) {

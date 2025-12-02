@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import React, { useCallback, useEffect, useState } from "react";
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_BASE_API_URL;
+const apiBaseUrl = process.env.prodNEXT_PUBLIC_BASE_API_URL;
 const TOKEN_STORAGE_KEY = "kds-token";
 const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
   day: "2-digit",
@@ -106,7 +106,7 @@ export default function QRCodeGeneratorPage() {
       requestedPageSize = workersPagination.pageSize
     ) => {
       if (!apiBaseUrl) {
-        setWorkersError("API base URL is missing. Please check .env.local.");
+        setWorkersError("API base URL is missing. Please check .env.prodlocal.");
         return;
       }
       const effectiveToken =
@@ -253,7 +253,7 @@ export default function QRCodeGeneratorPage() {
 
     try {
       if (!apiBaseUrl) {
-        throw new Error("API base URL is missing. Please check .env.local.");
+        throw new Error("API base URL is missing. Please check .env.prodlocal.");
       }
       if (!authToken) {
         throw new Error("Authentication credentials were not provided.");

@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/router";
 import React, { useState } from "react";
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_BASE_API_URL;
+const apiBaseUrl = process.env.prodNEXT_PUBLIC_BASE_API_URL;
 const TOKEN_STORAGE_KEY = "kds-token";
 
 export default function LoginPage() {
@@ -24,7 +24,7 @@ export default function LoginPage() {
     }
 
     if (!apiBaseUrl) {
-      setErrorMessage("API base URL is missing. Check your .env.local file.");
+      setErrorMessage("API base URL is missing. Check your .env.prodlocal file.");
       return;
     }
 
