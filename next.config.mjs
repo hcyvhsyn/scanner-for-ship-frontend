@@ -1,8 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /* config options here */
+  output: "export",          // ⭐ STATIC EXPORT aktiv
+  trailingSlash: true,       // ⭐ serverdə routing problemlərinin qarşısını alır
   reactCompiler: true,
   reactStrictMode: true,
+
   async redirects() {
     return [
       {
