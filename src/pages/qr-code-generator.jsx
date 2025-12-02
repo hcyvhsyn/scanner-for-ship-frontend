@@ -128,7 +128,8 @@ export default function QRCodeGeneratorPage() {
         endpoint.searchParams.set("page_size", String(pageSizeToUse));
         const { data } = await axios.get(endpoint.toString(), {
           headers: {
-            Authorization: effectiveToken,
+            Authorization: `Bearer ${effectiveToken.replace(/^Bearer\s+/i, "")}`,
+            "ngrok-skip-browser-warning": "true",
           },
         });
         const list = Array.isArray(data)
@@ -268,10 +269,12 @@ export default function QRCodeGeneratorPage() {
         endpoint,
         { full_name: trimmedName },
         {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: effectiveToken,
-          },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${effectiveToken.replace(/^Bearer\s+/i, "")}`,
+          "ngrok-skip-browser-warning": "true",
+        },
+
         }
       );
 

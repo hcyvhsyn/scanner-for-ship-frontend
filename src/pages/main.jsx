@@ -1,25 +1,65 @@
-import Link from "next/link";
-import React from "react";
+"use client";
 
-const navItems = [
-  {
-    href: "/qr-code-generator",
-    title: "Generate QR IDs",
-    description: "Create secure employee QR codes in seconds.",
-  },
-  {
-    href: "/qr-code-scan",
-    title: "Live Scanner",
-    description: "Capture entries via camera with instant validation.",
-  },
-  {
-    href: "/list",
-    title: "Attendance Logs",
-    description: "Review the full audit trail with export-ready data.",
-  },
-];
+import Link from "next/link";
+import React, { useEffect, useState, useCallback } from "react";
+
+const TOKEN_STORAGE_KEY = "kds-token";
 
 export default function MainPage() {
+  const [authToken, setAuthToken] = useState("");
+
+  // Token normalize — bütün səhifələrdə eyni olmalıdır
+  const normalizeToken = useCallback((tokenValue) => {
+    if (!tokenValue) return "";
+    const trimmed = tokenValue.trim();
+    if (!trimmed) return "";
+
+    if (trimmed.toLowerCase().startsWith("bearer ")) {
+      return `Bearer ${trimmed.slice(7).trim()}`;
+    }
+    return `Bearer ${trimmed}`;
+  }, []);
+
+  // Token oxu (login-dən gəlmiş və ya saxlanmış)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const stored =
+      window.sessionStorage?.getItem(TOKEN_STORAGE_KEY) ||
+      window.localStorage?.getItem(TOKEN_STORAGE_KEY);
+
+    if (stored) {
+      const norm = normalizeToken(stored);
+      setAuthToken(norm);
+      window.sessionStorage.setItem(TOKEN_STORAGE_KEY, norm); // always normalize
+    }
+  }, [normalizeToken]);
+
+  // Token ilə link yaratmaq
+  const withToken = (href) => {
+    if (!authToken) return href;
+    return `${href}?token=${encodeURIComponent(authToken)}`;
+  };
+
+  const navItems = [
+    {
+      href: withToken("/qr-code-generator"),
+      title: "Generate QR IDs",
+      description: "Create secure employee QR codes in seconds.",
+    },
+    {
+      href: withToken("/qr-code-scan"),
+      title: "Live Scanner",
+      description: "Capture entries via camera with instant validation.",
+    },
+    {
+      href: withToken("/list"),
+      title: "Attendance Logs",
+      description: "Review the full audit trail with export-ready data.",
+    },
+  ];
+
+  // UI aşağı dəyişilmədən saxlanır
   return (
     <div className="min-h-screen bg-linear-to-b from-white via-[#F3F4F6] to-white">
       <main className="mx-auto max-w-6xl px-6 py-12 space-y-10">
@@ -36,15 +76,16 @@ export default function MainPage() {
               on a single surface designed for HR and security teams.
             </p>
           </div>
+
           <div className="flex flex-wrap gap-3">
             <Link
-              href="/qr-code-generator"
+              href={withToken("/qr-code-generator")}
               className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#0F172A] shadow hover:shadow-lg transition"
             >
               Launch Generator
             </Link>
             <Link
-              href="/qr-code-scan"
+              href={withToken("/qr-code-scan")}
               className="rounded-full border border-white/40 px-5 py-2 text-sm font-semibold text-white hover:bg-white/10 transition"
             >
               Open Scanner
@@ -64,6 +105,7 @@ export default function MainPage() {
                 context.
               </p>
             </div>
+
             <nav className="grid gap-4 md:grid-cols-3">
               {navItems.map((item) => (
                 <Link

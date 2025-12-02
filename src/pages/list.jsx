@@ -33,28 +33,50 @@ export default function ListPage() {
     hasNext: false,
     hasPrev: false,
   });
+
   const [authToken, setAuthToken] = useState("");
 
+  // --- TOKEN NORMALIZER (Bu vacibdir) ---
+  const normalizeToken = useCallback((tokenValue) => {
+    if (!tokenValue) return "";
+    const trimmed = tokenValue.trim();
+    if (!trimmed) return "";
+
+    // Əgər Bearer ilə başlayırsa → olduğu kimi saxlayırıq
+    if (trimmed.toLowerCase().startsWith("bearer ")) {
+      return `Bearer ${trimmed.slice(7).trim()}`;
+    }
+
+    // Əks halda tokeni Bearer formatına salırıq
+    return `Bearer ${trimmed}`;
+  }, []);
+
+  // --- TOKEN OXUMA ---
   useEffect(() => {
     if (typeof window === "undefined") return;
     const queryToken =
       typeof router.query.token === "string" ? router.query.token : null;
 
     if (queryToken) {
-      setAuthToken(queryToken);
-      window.sessionStorage?.setItem(TOKEN_STORAGE_KEY, queryToken);
-      window.localStorage?.setItem(TOKEN_STORAGE_KEY, queryToken);
+      const norm = normalizeToken(queryToken);
+      setAuthToken(norm);
+      window.sessionStorage?.setItem(TOKEN_STORAGE_KEY, norm);
+      window.localStorage?.setItem(TOKEN_STORAGE_KEY, norm);
       return;
     }
 
-    const storedToken =
+    const stored =
       window.sessionStorage?.getItem(TOKEN_STORAGE_KEY) ||
       window.localStorage?.getItem(TOKEN_STORAGE_KEY);
-    if (storedToken) {
-      setAuthToken(storedToken);
-    }
-  }, [router.query.token]);
 
+    if (stored) {
+      const norm = normalizeToken(stored);
+      setAuthToken(norm);
+      window.sessionStorage?.setItem(TOKEN_STORAGE_KEY, norm);
+    }
+  }, [router.query.token, normalizeToken]);
+
+  // --- SCANNED USERS FETCH ---
   const fetchScannedUsers = useCallback(
     async (requestedPage = pagination.page) => {
       if (!apiBaseUrl) {
@@ -74,11 +96,14 @@ export default function ListPage() {
         const endpoint = new URL("scanned-users/", apiBaseUrl);
         endpoint.searchParams.set("page", String(currentPage));
         endpoint.searchParams.set("page_size", String(pagination.pageSize));
+
         const { data } = await axios.get(endpoint.toString(), {
           headers: {
             Authorization: authToken,
+            "ngrok-skip-browser-warning": "true",
           },
         });
+
         const list = Array.isArray(data)
           ? data
           : Array.isArray(data?.results)
@@ -150,6 +175,7 @@ export default function ListPage() {
     fetchScannedUsers(pagination.page);
   }, [authToken, fetchScannedUsers, pagination.page]);
 
+  // --- TOTAL PAGES ---
   const totalPages = useMemo(() => {
     if (!pagination.pageSize) return 1;
     return Math.max(
@@ -158,6 +184,7 @@ export default function ListPage() {
     );
   }, [pagination.pageSize, pagination.total, scans.length]);
 
+  // --- EXCEL EXPORT ---
   const handleExport = async () => {
     if (!apiBaseUrl) {
       setErrorMessage("API base URL is missing. Please check .env.local.");
@@ -167,6 +194,7 @@ export default function ListPage() {
       setErrorMessage("Authentication credentials were not provided.");
       return;
     }
+
     setExporting(true);
     setErrorMessage("");
 
@@ -174,13 +202,18 @@ export default function ListPage() {
       const endpoint = new URL("export-excel/", apiBaseUrl);
       endpoint.searchParams.set("page", String(pagination.page));
       endpoint.searchParams.set("page_size", String(pagination.pageSize));
+
       const { data } = await axios.get(endpoint.toString(), {
         responseType: "blob",
         headers: {
           Authorization: authToken,
+          "ngrok-skip-browser-warning": "true",
         },
       });
-      const blob = new Blob([data], { type: "application/vnd.ms-excel" });
+
+      const blob = new Blob([data], {
+        type: "application/vnd.ms-excel",
+      });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -205,6 +238,7 @@ export default function ListPage() {
     }
   };
 
+  // --- UI ---
   return (
     <div className="min-h-screen bg-[#EEF2FF]">
       <div className="mx-auto max-w-5xl px-6 py-10 space-y-8">
@@ -314,9 +348,11 @@ export default function ListPage() {
               </table>
             </div>
           </div>
+
           {errorMessage && (
             <p className="mt-4 text-[11px] text-red-500">{errorMessage}</p>
           )}
+
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <button
               type="button"
