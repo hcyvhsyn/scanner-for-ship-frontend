@@ -1,8 +1,10 @@
 import axios from "axios";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_BASE_API_URL;
+const TOKEN_STORAGE_KEY = "kds-token";
 
 const formatDate = (value) => {
   if (!value) return "-";
@@ -19,6 +21,7 @@ const formatTime = (value) => {
 };
 
 export default function ListPage() {
+  const router = useRouter();
   const [scans, setScans] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -30,11 +33,36 @@ export default function ListPage() {
     hasNext: false,
     hasPrev: false,
   });
+  const [authToken, setAuthToken] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const queryToken =
+      typeof router.query.token === "string" ? router.query.token : null;
+
+    if (queryToken) {
+      setAuthToken(queryToken);
+      window.sessionStorage?.setItem(TOKEN_STORAGE_KEY, queryToken);
+      window.localStorage?.setItem(TOKEN_STORAGE_KEY, queryToken);
+      return;
+    }
+
+    const storedToken =
+      window.sessionStorage?.getItem(TOKEN_STORAGE_KEY) ||
+      window.localStorage?.getItem(TOKEN_STORAGE_KEY);
+    if (storedToken) {
+      setAuthToken(storedToken);
+    }
+  }, [router.query.token]);
 
   const fetchScannedUsers = useCallback(
     async (requestedPage = pagination.page) => {
       if (!apiBaseUrl) {
         setErrorMessage("API base URL is missing. Please check .env.local.");
+        return;
+      }
+      if (!authToken) {
+        setErrorMessage("Authentication credentials were not provided.");
         return;
       }
 
@@ -43,10 +71,14 @@ export default function ListPage() {
 
       try {
         const currentPage = Math.max(1, requestedPage);
-        const endpoint = new URL("/api/scanned-users/", apiBaseUrl);
+        const endpoint = new URL("scanned-users/", apiBaseUrl);
         endpoint.searchParams.set("page", String(currentPage));
         endpoint.searchParams.set("page_size", String(pagination.pageSize));
-        const { data } = await axios.get(endpoint.toString());
+        const { data } = await axios.get(endpoint.toString(), {
+          headers: {
+            Authorization: authToken,
+          },
+        });
         const list = Array.isArray(data)
           ? data
           : Array.isArray(data?.results)
@@ -110,12 +142,13 @@ export default function ListPage() {
         setIsLoading(false);
       }
     },
-    [pagination.page, pagination.pageSize]
+    [pagination.page, pagination.pageSize, authToken]
   );
 
   useEffect(() => {
+    if (!authToken) return;
     fetchScannedUsers(pagination.page);
-  }, [fetchScannedUsers, pagination.page]);
+  }, [authToken, fetchScannedUsers, pagination.page]);
 
   const totalPages = useMemo(() => {
     if (!pagination.pageSize) return 1;
@@ -130,15 +163,22 @@ export default function ListPage() {
       setErrorMessage("API base URL is missing. Please check .env.local.");
       return;
     }
+    if (!authToken) {
+      setErrorMessage("Authentication credentials were not provided.");
+      return;
+    }
     setExporting(true);
     setErrorMessage("");
 
     try {
-      const endpoint = new URL("/api/export-excel/", apiBaseUrl);
+      const endpoint = new URL("export-excel/", apiBaseUrl);
       endpoint.searchParams.set("page", String(pagination.page));
       endpoint.searchParams.set("page_size", String(pagination.pageSize));
       const { data } = await axios.get(endpoint.toString(), {
         responseType: "blob",
+        headers: {
+          Authorization: authToken,
+        },
       });
       const blob = new Blob([data], { type: "application/vnd.ms-excel" });
       const url = window.URL.createObjectURL(blob);
@@ -164,7 +204,7 @@ export default function ListPage() {
       setExporting(false);
     }
   };
-   
+
   return (
     <div className="min-h-screen bg-[#EEF2FF]">
       <div className="mx-auto max-w-5xl px-6 py-10 space-y-8">

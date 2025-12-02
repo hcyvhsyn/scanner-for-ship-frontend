@@ -1,9 +1,11 @@
 import axios from "axios";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import React, { useCallback, useEffect, useState } from "react";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_BASE_API_URL;
+const TOKEN_STORAGE_KEY = "kds-token";
 const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
   day: "2-digit",
   month: "2-digit",
@@ -27,6 +29,7 @@ const formatDateTime = (value) => {
 };
 
 export default function QRCodeGeneratorPage() {
+  const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -42,6 +45,46 @@ export default function QRCodeGeneratorPage() {
   });
   const [previewEntry, setPreviewEntry] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [authToken, setAuthToken] = useState("");
+
+  const readTokenFromStorage = useCallback(() => {
+    if (typeof window === "undefined") return "";
+    return (
+      window.sessionStorage?.getItem(TOKEN_STORAGE_KEY) ||
+      window.localStorage?.getItem(TOKEN_STORAGE_KEY) ||
+      ""
+    );
+  }, []);
+
+  const normalizeToken = useCallback((tokenValue) => {
+    if (!tokenValue) return "";
+    const trimmed = tokenValue.trim();
+    if (!trimmed) return "";
+    return trimmed.toLowerCase().startsWith("bearer ")
+      ? `Bearer ${trimmed.slice(7).trim()}`
+      : `Bearer ${trimmed}`;
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const queryToken =
+      typeof router.query.token === "string" ? router.query.token : null;
+
+    if (queryToken) {
+      const normalized = normalizeToken(queryToken);
+      setAuthToken(normalized);
+      window.sessionStorage?.setItem(TOKEN_STORAGE_KEY, normalized);
+      window.localStorage?.setItem(TOKEN_STORAGE_KEY, normalized);
+      return;
+    }
+
+    const storedToken = readTokenFromStorage();
+    if (storedToken) {
+      const normalized = normalizeToken(storedToken);
+      setAuthToken(normalized);
+      window.sessionStorage?.setItem(TOKEN_STORAGE_KEY, normalized);
+    }
+  }, [normalizeToken, readTokenFromStorage, router.query.token]);
 
   const closePreview = () => setPreviewEntry(null);
   const closeDeleteModal = () => setDeleteTarget(null);
@@ -62,16 +105,32 @@ export default function QRCodeGeneratorPage() {
       requestedPage = 1,
       requestedPageSize = workersPagination.pageSize
     ) => {
-      if (!apiBaseUrl) return;
+      if (!apiBaseUrl) {
+        setWorkersError("API base URL is missing. Please check .env.local.");
+        return;
+      }
+      const effectiveToken =
+        authToken || normalizeToken(readTokenFromStorage());
+      if (!effectiveToken) {
+        setWorkersError("Authentication credentials were not provided.");
+        return;
+      }
+      if (!authToken && effectiveToken) {
+        setAuthToken(effectiveToken);
+      }
       const currentPage = Math.max(1, requestedPage);
       const pageSizeToUse = Math.max(1, requestedPageSize);
       setIsWorkersLoading(true);
       setWorkersError("");
       try {
-        const endpoint = new URL("/api/workers/", apiBaseUrl);
+        const endpoint = new URL("workers/", apiBaseUrl);
         endpoint.searchParams.set("page", String(currentPage));
         endpoint.searchParams.set("page_size", String(pageSizeToUse));
-        const { data } = await axios.get(endpoint.toString());
+        const { data } = await axios.get(endpoint.toString(), {
+          headers: {
+            Authorization: effectiveToken,
+          },
+        });
         const list = Array.isArray(data)
           ? data
           : Array.isArray(data?.results)
@@ -146,12 +205,23 @@ export default function QRCodeGeneratorPage() {
         setIsWorkersLoading(false);
       }
     },
-    [workersPagination.pageSize]
+    [
+      authToken,
+      normalizeToken,
+      readTokenFromStorage,
+      workersPagination.pageSize,
+    ]
   );
 
   useEffect(() => {
+    if (!authToken) return;
     fetchWorkers(workersPagination.page, workersPagination.pageSize);
-  }, [fetchWorkers, workersPagination.page, workersPagination.pageSize]);
+  }, [
+    authToken,
+    fetchWorkers,
+    workersPagination.page,
+    workersPagination.pageSize,
+  ]);
 
   const handlePageChange = useCallback(
     (direction) => {
@@ -184,14 +254,23 @@ export default function QRCodeGeneratorPage() {
       if (!apiBaseUrl) {
         throw new Error("API base URL is missing. Please check .env.local.");
       }
+      if (!authToken) {
+        throw new Error("Authentication credentials were not provided.");
+      }
 
-      const endpoint = new URL("/api/generate-qr/", apiBaseUrl).toString();
+      const endpoint = new URL("generate-qr/", apiBaseUrl).toString();
+      const effectiveToken =
+        authToken || normalizeToken(readTokenFromStorage());
+      if (!authToken && effectiveToken) {
+        setAuthToken(effectiveToken);
+      }
       const { data } = await axios.post(
         endpoint,
         { full_name: trimmedName },
         {
           headers: {
             "Content-Type": "application/json",
+            Authorization: effectiveToken,
           },
         }
       );

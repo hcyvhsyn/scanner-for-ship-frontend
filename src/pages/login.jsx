@@ -1,9 +1,86 @@
+import axios from "axios";
 import Head from "next/head";
 import Image from "next/image";
-import Link from "next/link";
-import React from "react";
+import { useRouter } from "next/router";
+import React, { useState } from "react";
+
+const apiBaseUrl = process.env.NEXT_PUBLIC_BASE_API_URL;
+const TOKEN_STORAGE_KEY = "kds-token";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const [nickname, setNickname] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    const trimmedNickname = nickname.trim();
+    const trimmedPassword = password.trim();
+    if (!trimmedNickname || !trimmedPassword) {
+      setErrorMessage("Please provide both nickname and password.");
+      return;
+    }
+
+    if (!apiBaseUrl) {
+      setErrorMessage("API base URL is missing. Check your .env.local file.");
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMessage("");
+
+    try {
+      const endpoint = new URL("./login/", apiBaseUrl).toString();
+      const { data } = await axios.post(
+        endpoint,
+        { username: trimmedNickname, password: trimmedPassword },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const token =
+        data?.token ||
+        data?.access ||
+        data?.data?.token ||
+        data?.data?.access ||
+        "";
+
+      if (!token) {
+        throw new Error("Authentication succeeded but no token was returned.");
+      }
+
+      const normalizedToken = token.trim();
+      const bearerToken = normalizedToken.startsWith("Bearer ")
+        ? normalizedToken
+        : `Bearer ${normalizedToken}`;
+
+      if (typeof window !== "undefined") {
+        window.sessionStorage?.setItem(TOKEN_STORAGE_KEY, bearerToken);
+        window.localStorage?.setItem(TOKEN_STORAGE_KEY, bearerToken);
+      }
+
+      await router.push(`/main?token=${encodeURIComponent(bearerToken)}`);
+    } catch (error) {
+      const message = axios.isAxiosError(error)
+        ? typeof error.response?.data === "string"
+          ? error.response.data
+          : error.response?.data?.detail ||
+            error.response?.data?.message ||
+            error.message
+        : error instanceof Error
+        ? error.message
+        : "An unexpected error occurred while signing in.";
+      setErrorMessage(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <>
       <Head>
@@ -12,7 +89,7 @@ export default function LoginPage() {
           name="description"
           content="Access your account to manage bookings, insights, and support."
         />
-        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" href="/kds-favicon.svg" />
       </Head>
 
       <div className="relative flex min-h-screen items-center justify-center bg-linear-to-br from-[#0f172a] via-[#1d1f2b] to-[#0f172a] px-4 text-white">
@@ -38,16 +115,17 @@ export default function LoginPage() {
               className="h-40 w-full object-cover"
               priority
             />
-            
           </div>
 
-          <form className="space-y-5">
+          <form className="space-y-5" onSubmit={handleSubmit}>
             <label className="block text-sm font-medium text-white/90">
-              Email
+              Nickname
               <input
-                type="email"
+                type="text"
+                value={nickname}
+                onChange={(event) => setNickname(event.target.value)}
                 className="mt-2 w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-white placeholder-white/60 focus:border-white/80 focus:outline-none"
-                placeholder="you@company.com"
+                placeholder="Nickname"
               />
             </label>
             <div>
@@ -59,16 +137,28 @@ export default function LoginPage() {
               </div>
               <input
                 type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
                 className="mt-2 w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-white placeholder-white/60 focus:border-white/80 focus:outline-none"
                 placeholder="Enter your password"
               />
             </div>
-          </form>
-          <Link href="/main">
-            <button className="mt-6 w-full rounded-xl bg-white py-3 text-sm font-semibold text-[#0f172a] shadow-lg transition hover:-translate-y-0.5 hover:bg-gray-100">
-              Continue
+            {errorMessage && (
+              <p className="text-sm text-red-300">{errorMessage}</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className={`mt-4 w-full rounded-xl py-3 text-sm font-semibold text-[#0f172a] shadow-lg transition ${
+                isLoading
+                  ? "bg-white/60 cursor-not-allowed"
+                  : "bg-white hover:-translate-y-0.5 hover:bg-gray-100"
+              }`}
+            >
+              {isLoading ? "Signing in..." : "Continue"}
             </button>
-          </Link>
+          </form>
         </div>
       </div>
     </>

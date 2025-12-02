@@ -1,8 +1,10 @@
 import axios from "axios";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_BASE_API_URL;
+const TOKEN_STORAGE_KEY = "kds-token";
 
 const getFeedbackStatus = (text) => {
   if (!text) return { colorClass: "", prefix: "" };
@@ -43,12 +45,14 @@ const requestCameraAccess = async () => {
 };
 
 export default function QRCodeScanPage() {
+  const router = useRouter();
   const [isScanning, setIsScanning] = useState(false);
   const [scanMessage, setScanMessage] = useState("");
   const [scanResult, setScanResult] = useState("");
   const [lastScanTime, setLastScanTime] = useState("");
   const [scanFeedback, setScanFeedback] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authToken, setAuthToken] = useState("");
   const html5QrCodeRef = useRef(null);
   const errorNotifiedRef = useRef(false);
   const isProcessingRef = useRef(false);
@@ -60,6 +64,26 @@ export default function QRCodeScanPage() {
   useEffect(() => {
     setFeedbackMeta(getFeedbackStatus(scanFeedback));
   }, [scanFeedback]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const queryToken =
+      typeof router.query.token === "string" ? router.query.token : null;
+
+    if (queryToken) {
+      setAuthToken(queryToken);
+      window.sessionStorage?.setItem(TOKEN_STORAGE_KEY, queryToken);
+      window.localStorage?.setItem(TOKEN_STORAGE_KEY, queryToken);
+      return;
+    }
+
+    const storedToken =
+      window.sessionStorage?.getItem(TOKEN_STORAGE_KEY) ||
+      window.localStorage?.getItem(TOKEN_STORAGE_KEY);
+    if (storedToken) {
+      setAuthToken(storedToken);
+    }
+  }, [router.query.token]);
 
   const buildFeedbackClasses = useCallback(
     (base) => (feedbackClass ? `${base} ${feedbackClass}` : base),
@@ -107,14 +131,18 @@ export default function QRCodeScanPage() {
         if (!apiBaseUrl) {
           throw new Error("API base URL is missing. Please check .env.local.");
         }
+        if (!authToken) {
+          throw new Error("Authentication credentials were not provided.");
+        }
 
-        const endpoint = new URL("/api/scan/", apiBaseUrl).toString();
+        const endpoint = new URL("scan/", apiBaseUrl).toString();
         const { data } = await axios.post(
           endpoint,
           { qr_text: decodedText },
           {
             headers: {
               "Content-Type": "application/json",
+              Authorization: authToken,
             },
           }
         );
