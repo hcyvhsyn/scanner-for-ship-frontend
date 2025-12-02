@@ -1,9 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "export",          // ⭐ STATIC EXPORT aktiv
-  trailingSlash: true,       // ⭐ serverdə routing problemlərinin qarşısını alır
+  output: "export",
+  trailingSlash: true,
   reactCompiler: true,
   reactStrictMode: true,
+
+  images: {
+    unoptimized: true,   // ⭐ Static export üçün ŞƏRTDİR
+  },
 
   async redirects() {
     return [
