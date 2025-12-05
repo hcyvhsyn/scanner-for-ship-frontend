@@ -31,6 +31,7 @@ export default function ListPage() {
   });
 
   const [authToken, setAuthToken] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   // --- TOKEN NORMALIZER ---
   const normalizeToken = useCallback((tokenValue) => {
@@ -61,6 +62,61 @@ export default function ListPage() {
 
     if (stored) setAuthToken(normalizeToken(stored));
   }, [router.query.token, normalizeToken]);
+
+  const closeDeleteModal = () => setDeleteTarget(null);
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+
+    if (!apiBaseUrl) {
+      setErrorMessage("API URL missing.");
+      return;
+    }
+
+    const storedToken =
+      authToken ||
+      normalizeToken(
+        (typeof window !== "undefined"
+          ? window.localStorage.getItem(TOKEN_STORAGE_KEY) ||
+            window.sessionStorage.getItem(TOKEN_STORAGE_KEY)
+          : "") || ""
+      );
+
+    if (!storedToken) {
+      setErrorMessage("Authentication missing.");
+      setTimeout(() => router.push("/login"), 1500);
+      return;
+    }
+
+    const recordId = deleteTarget.id;
+
+    if (recordId !== undefined && recordId !== null) {
+      try {
+        const endpoint = new URL(`log/delete/${recordId}/`, apiBaseUrl);
+        await axios.delete(endpoint.toString(), {
+          headers: {
+            Authorization: storedToken,
+            "ngrok-skip-browser-warning": "true",
+          },
+        });
+      } catch (error) {
+        const message = axios.isAxiosError(error)
+          ? typeof error.response?.data === "string"
+            ? error.response.data
+            : error.response?.data?.detail ||
+              error.response?.data?.message ||
+              error.message
+          : error instanceof Error
+          ? error.message
+          : "Unexpected error while deleting.";
+        setErrorMessage(message);
+        return;
+      }
+    }
+
+    setScans((prev) => prev.filter((entry) => entry.id !== deleteTarget.id));
+    setDeleteTarget(null);
+  };
 
   // ================================
   //    FETCH SCANNED USERS (FIXED)
@@ -105,11 +161,12 @@ export default function ListPage() {
 
             rawTime: item.entry_time || item.exit_time || null, // UI bundan istifadə edir
 
-            scanType: item.entry_time && item.exit_time
-              ? "exit" // əgər hər iki vaxt varsa → çıxış
-              : item.entry_time
-              ? "entry"
-              : "-", // fallback
+            scanType:
+              item.entry_time && item.exit_time
+                ? "exit" // əgər hər iki vaxt varsa → çıxış
+                : item.entry_time
+                ? "entry"
+                : "-", // fallback
 
             entry_time: item.entry_time,
             exit_time: item.exit_time,
@@ -228,6 +285,7 @@ export default function ListPage() {
                   <th className="py-2 px-2">Date</th>
                   <th className="py-2 px-2">Entry time</th>
                   <th className="py-2 px-2">Exit time</th>
+                  <th className="py-2 pr-4 text-right">Actions</th>
                 </tr>
               </thead>
 
@@ -246,6 +304,15 @@ export default function ListPage() {
 
                     <td className="py-2 px-2 text-[11px]">
                       {formatTime(item.exit_time)}
+                    </td>
+                    <td className="py-2 pr-4 text-[11px] text-right">
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(item)}
+                        className="inline-flex items-center gap-1 rounded-full border border-[#FECACA] px-3 py-1 text-[11px] font-semibold text-[#B42318] transition hover:bg-[#FEE2E2]"
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -266,6 +333,46 @@ export default function ListPage() {
           )}
         </section>
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <button
+              type="button"
+              onClick={closeDeleteModal}
+              className="absolute right-3 top-3 text-[#98A2B3] hover:text-[#0F172A]"
+              aria-label="Close dialog"
+            >
+              &times;
+            </button>
+            <p className="mb-2 text-center text-sm font-semibold text-[#0F172A]">
+              {deleteTarget.name}
+            </p>
+            <p className="text-center text-xs text-[#475467]">
+              Do you want to remove this attendance entry from the log?
+            </p>
+            <p className="mt-1 text-center text-[10px] text-[#98A2B3]">
+              {deleteTarget.date} · {deleteTarget.rawTime || "--:--"}
+            </p>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={closeDeleteModal}
+                className="w-full rounded-full border border-[#E4E7EC] px-4 py-2 text-xs font-medium text-[#475467] hover:bg-[#F8FAFC]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteConfirm}
+                className="w-full rounded-full bg-[#B42318] px-4 py-2 text-xs font-medium text-white hover:bg-[#991B1B]"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

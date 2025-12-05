@@ -276,12 +276,9 @@ export default function QRCodeScanPage() {
   return (
     <div className="min-h-screen bg-[#EEF2FF]">
       <div className="mx-auto max-w-6xl px-6 py-10 space-y-10">
-     
-
         <section className="grid gap-8 lg:grid-cols-[1.1fr,0.9fr]">
           <div className="rounded-3xl bg-white p-6 shadow-xl ring-1 ring-black/5 flex flex-col gap-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
-              
               <span
                 className={`rounded-full px-4 py-1 text-xs font-semibold ${
                   isScanning
@@ -311,8 +308,6 @@ export default function QRCodeScanPage() {
                 )}
               </div>
             </div>
-
-           
 
             <div className="flex flex-col gap-3 sm:flex-row">
               <button
@@ -380,8 +375,6 @@ export default function QRCodeScanPage() {
                 </div>
               </div>
             </div>
-
-         
           </div>
         </section>
       </div>
