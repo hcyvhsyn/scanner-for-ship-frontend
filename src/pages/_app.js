@@ -11,7 +11,9 @@ const navItems = [
 
 export default function App({ Component, pageProps }) {
   const router = useRouter();
-  const hideNav = router.pathname === "/login";
+  const pathWithoutQuery =
+    router.asPath?.split("?")[0] ?? router.pathname ?? "";
+  const hideNav = pathWithoutQuery === "/login" || pathWithoutQuery === "/";
 
   return (
     <div className="min-h-screen bg-[#F3F4F6] text-[#0F172A]">

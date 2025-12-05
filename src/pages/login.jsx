@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -24,7 +25,9 @@ export default function LoginPage() {
     }
 
     if (!apiBaseUrl) {
-      setErrorMessage("API base URL is missing. Check your .env.prodlocal file.");
+      setErrorMessage(
+        "API base URL is missing. Check your .env.prodlocal file."
+      );
       return;
     }
 
@@ -32,10 +35,11 @@ export default function LoginPage() {
     setErrorMessage("");
 
     try {
+      const normalizedNickname = trimmedNickname.toLowerCase();
       const endpoint = new URL("./login/", apiBaseUrl).toString();
       const { data } = await axios.post(
         endpoint,
-        { username: trimmedNickname, password: trimmedPassword },
+        { username: normalizedNickname, password: trimmedPassword },
         {
           headers: {
             "Content-Type": "application/json",
@@ -128,17 +132,27 @@ export default function LoginPage() {
                 placeholder="Nickname"
               />
             </label>
-            <div>
+            <div className="space-y-2">
               <div className="flex items-center justify-between text-sm font-medium text-white/90">
                 <span>Password</span>
               </div>
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="mt-2 w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-white placeholder-white/60 focus:border-white/80 focus:outline-none"
-                placeholder="Enter your password"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="mt-0 w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 pr-12 text-white placeholder-white/60 focus:border-white/80 focus:outline-none"
+                  placeholder="Enter your password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute inset-y-0 right-3 flex items-center text-xl"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? "🙈" : "👁️"}
+                </button>
+              </div>
             </div>
             {errorMessage && (
               <p className="text-sm text-red-300">{errorMessage}</p>
