@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import React, { useCallback, useEffect, useState } from "react";
 
-const apiBaseUrl = process.env.prodNEXT_PUBLIC_BASE_API_URL;
+const apiBaseUrl = process.env.NEXT_PUBLIC_BASE_API_URL;
 const TOKEN_STORAGE_KEY = "kds-token";
 const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
   day: "2-digit",
@@ -56,13 +56,17 @@ export default function QRCodeGeneratorPage() {
     );
   }, []);
 
+  // Sadələşdirilmiş token normalize funksiyası
   const normalizeToken = useCallback((tokenValue) => {
     if (!tokenValue) return "";
     const trimmed = tokenValue.trim();
     if (!trimmed) return "";
-    return trimmed.toLowerCase().startsWith("bearer ")
-      ? `Bearer ${trimmed.slice(7).trim()}`
-      : `Bearer ${trimmed}`;
+    // Əgər artıq "Bearer " ilə başlayırsa, olduğu kimi qaytar
+    if (trimmed.toLowerCase().startsWith("bearer ")) {
+      return trimmed;
+    }
+    // Əks halda, "Bearer " əlavə et
+    return `Bearer ${trimmed}`;
   }, []);
 
   useEffect(() => {
@@ -82,15 +86,29 @@ export default function QRCodeGeneratorPage() {
     if (storedToken) {
       const normalized = normalizeToken(storedToken);
       setAuthToken(normalized);
-      window.sessionStorage?.setItem(TOKEN_STORAGE_KEY, normalized);
     }
   }, [normalizeToken, readTokenFromStorage, router.query.token]);
 
   const closePreview = () => setPreviewEntry(null);
   const closeDeleteModal = () => setDeleteTarget(null);
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
+    
+    // Əgər backend-də delete endpoint varsa, buradan istifadə edin
+    // try {
+    //   const endpoint = new URL(`workers/${deleteTarget.id}/`, apiBaseUrl);
+    //   await axios.delete(endpoint.toString(), {
+    //     headers: {
+    //       Authorization: authToken,
+    //       "ngrok-skip-browser-warning": "true",
+    //     },
+    //   });
+    // } catch (error) {
+    //   console.error("Delete error:", error);
+    // }
+    
+    // Local state-dən sil
     setWorkers((prev) =>
       prev.filter((entry) => entry.historyKey !== deleteTarget.historyKey)
     );
@@ -105,33 +123,48 @@ export default function QRCodeGeneratorPage() {
       requestedPage = 1,
       requestedPageSize = workersPagination.pageSize
     ) => {
+      // Debug logs
+      console.log("API Base URL:", apiBaseUrl);
+      console.log("Auth Token exists:", !!authToken);
+      
       if (!apiBaseUrl) {
-        setWorkersError("API base URL is missing. Please check .env.prodlocal.");
+        setWorkersError("API base URL is missing. Please check .env.local and restart the server.");
         return;
       }
-      const effectiveToken =
-        authToken || normalizeToken(readTokenFromStorage());
+      
+      const effectiveToken = authToken || normalizeToken(readTokenFromStorage());
+      
       if (!effectiveToken) {
-        setWorkersError("Authentication credentials were not provided.");
+        setWorkersError("Authentication credentials were not provided. Please login again.");
+        setTimeout(() => {
+          router.push("/login");
+        }, 2000);
         return;
       }
+      
       if (!authToken && effectiveToken) {
         setAuthToken(effectiveToken);
       }
+      
       const currentPage = Math.max(1, requestedPage);
       const pageSizeToUse = Math.max(1, requestedPageSize);
       setIsWorkersLoading(true);
       setWorkersError("");
+      
       try {
         const endpoint = new URL("workers/", apiBaseUrl);
         endpoint.searchParams.set("page", String(currentPage));
         endpoint.searchParams.set("page_size", String(pageSizeToUse));
+        
+        console.log("Fetching workers from:", endpoint.toString());
+        
         const { data } = await axios.get(endpoint.toString(), {
           headers: {
-            Authorization: `Bearer ${effectiveToken.replace(/^Bearer\s+/i, "")}`,
+            Authorization: effectiveToken,
             "ngrok-skip-browser-warning": "true",
           },
         });
+        
         const list = Array.isArray(data)
           ? data
           : Array.isArray(data?.results)
@@ -189,40 +222,42 @@ export default function QRCodeGeneratorPage() {
           hasPrev: currentPage > 1,
         });
       } catch (error) {
-        const message = axios.isAxiosError(error)
-          ? typeof error.response?.data === "string"
-            ? error.response.data
-            : error.response?.data?.detail ||
-              error.response?.data?.message ||
-              error.message
-          : error instanceof Error
-          ? error.message
-          : "An unexpected error occurred while loading the QR library.";
-        setWorkersError(
-          message ||
-            "An unexpected error occurred while loading the QR library."
-        );
+        console.error("Fetch workers error:", error);
+        
+        let message = "An unexpected error occurred while loading the QR library.";
+        
+        if (axios.isAxiosError(error)) {
+          if (error.response?.status === 401) {
+            message = "Authentication failed. Please login again.";
+            window.sessionStorage?.removeItem(TOKEN_STORAGE_KEY);
+            window.localStorage?.removeItem(TOKEN_STORAGE_KEY);
+            setTimeout(() => {
+              router.push("/login");
+            }, 2000);
+          } else {
+            message = typeof error.response?.data === "string"
+              ? error.response.data
+              : error.response?.data?.detail ||
+                error.response?.data?.message ||
+                error.message;
+          }
+        } else if (error instanceof Error) {
+          message = error.message;
+        }
+        
+        setWorkersError(message);
       } finally {
         setIsWorkersLoading(false);
       }
     },
-    [
-      authToken,
-      normalizeToken,
-      readTokenFromStorage,
-      workersPagination.pageSize,
-    ]
+    [authToken, normalizeToken, readTokenFromStorage, workersPagination.pageSize, router]
   );
 
   useEffect(() => {
     if (!authToken) return;
     fetchWorkers(workersPagination.page, workersPagination.pageSize);
-  }, [
-    authToken,
-    fetchWorkers,
-    workersPagination.page,
-    workersPagination.pageSize,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authToken]);
 
   const handlePageChange = useCallback(
     (direction) => {
@@ -248,33 +283,41 @@ export default function QRCodeGeneratorPage() {
   const handleGenerate = async () => {
     const trimmedName = fullName.trim();
     if (!trimmedName) return;
+    
     setIsLoading(true);
     setErrorMessage("");
 
     try {
+      console.log("API Base URL:", apiBaseUrl);
+      console.log("Auth Token exists:", !!authToken);
+      
       if (!apiBaseUrl) {
-        throw new Error("API base URL is missing. Please check .env.prodlocal.");
+        throw new Error("API base URL is missing. Please check .env.local and restart the server.");
       }
-      if (!authToken) {
-        throw new Error("Authentication credentials were not provided.");
+      
+      const effectiveToken = authToken || normalizeToken(readTokenFromStorage());
+      
+      if (!effectiveToken) {
+        throw new Error("Authentication credentials were not provided. Please login again.");
       }
-
-      const endpoint = new URL("generate-qr/", apiBaseUrl).toString();
-      const effectiveToken =
-        authToken || normalizeToken(readTokenFromStorage());
+      
       if (!authToken && effectiveToken) {
         setAuthToken(effectiveToken);
       }
+
+      const endpoint = new URL("generate-qr/", apiBaseUrl).toString();
+      
+      console.log("Generating QR at:", endpoint);
+      
       const { data } = await axios.post(
         endpoint,
         { full_name: trimmedName },
         {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${effectiveToken.replace(/^Bearer\s+/i, "")}`,
-          "ngrok-skip-browser-warning": "true",
-        },
-
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: effectiveToken,
+            "ngrok-skip-browser-warning": "true",
+          },
         }
       );
 
@@ -304,26 +347,42 @@ export default function QRCodeGeneratorPage() {
         },
         ...prev,
       ]);
+      
+      // Input-u təmizlə
+      setFullName("");
+      
     } catch (error) {
-      const message = axios.isAxiosError(error)
-        ? typeof error.response?.data === "string"
-          ? error.response.data
-          : error.response?.data?.detail ||
-            error.response?.data?.message ||
-            error.message
-        : error instanceof Error
-        ? error.message
-        : "An unexpected error occurred while generating the QR code.";
-      setErrorMessage(
-        message || "An unexpected error occurred while generating the QR code."
-      );
+      console.error("Generate QR error:", error);
+      
+      let message = "An unexpected error occurred while generating the QR code.";
+      
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 401) {
+          message = "Authentication failed. Please login again.";
+          window.sessionStorage?.removeItem(TOKEN_STORAGE_KEY);
+          window.localStorage?.removeItem(TOKEN_STORAGE_KEY);
+          setTimeout(() => {
+            router.push("/login");
+          }, 2000);
+        } else {
+          message = typeof error.response?.data === "string"
+            ? error.response.data
+            : error.response?.data?.detail ||
+              error.response?.data?.message ||
+              error.message;
+        }
+      } else if (error instanceof Error) {
+        message = error.message;
+      }
+      
+      setErrorMessage(message);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="bg-[#EEF2FF] ">
+    <div className="bg-[#EEF2FF] min-h-screen">
       <div className="mx-auto max-w-6xl px-6 py-12 space-y-8">
         <header className="rounded-3xl bg-white p-8 shadow-xl ring-1 ring-black/5 flex flex-wrap items-start justify-between gap-6">
           <div className="max-w-2xl space-y-3">
@@ -369,6 +428,11 @@ export default function QRCodeGeneratorPage() {
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="e.g. Eleanor Pena"
                   className="h-11 rounded-xl border border-[#D0D5DD] bg-[#F8FAFC] px-4 text-sm text-[#0F172A] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20 transition"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && !isLoading && fullName.trim()) {
+                      handleGenerate();
+                    }
+                  }}
                 />
               </div>
 
@@ -386,9 +450,9 @@ export default function QRCodeGeneratorPage() {
               <button
                 type="button"
                 onClick={handleGenerate}
-                disabled={isLoading}
+                disabled={isLoading || !fullName.trim()}
                 className={`w-full rounded-full px-5 py-3 text-sm font-semibold text-white transition shadow ${
-                  isLoading
+                  isLoading || !fullName.trim()
                     ? "bg-[#94A3B8] cursor-not-allowed"
                     : "bg-[#2563EB] hover:bg-[#1D4ED8]"
                 }`}
@@ -397,7 +461,9 @@ export default function QRCodeGeneratorPage() {
               </button>
 
               {errorMessage && (
-                <p className="text-sm text-red-500">{errorMessage}</p>
+                <div className="rounded-xl bg-red-50 border border-red-200 p-3">
+                  <p className="text-sm text-red-600">{errorMessage}</p>
+                </div>
               )}
             </div>
           </div>
@@ -408,17 +474,17 @@ export default function QRCodeGeneratorPage() {
             </p>
             <ul className="space-y-3">
               <li className="flex items-start gap-3">
-                <span className="mt-1 h-2 w-2 rounded-full bg-[#2563EB]" />
+                <span className="mt-1 h-2 w-2 rounded-full bg-[#2563EB] flex-shrink-0" />
                 Ensure names match the HRIS exactly to avoid duplicates in audit
                 logs.
               </li>
               <li className="flex items-start gap-3">
-                <span className="mt-1 h-2 w-2 rounded-full bg-[#2563EB]" />
+                <span className="mt-1 h-2 w-2 rounded-full bg-[#2563EB] flex-shrink-0" />
                 Rotate QR identifiers whenever an employee changes department or
                 role.
               </li>
               <li className="flex items-start gap-3">
-                <span className="mt-1 h-2 w-2 rounded-full bg-[#2563EB]" />
+                <span className="mt-1 h-2 w-2 rounded-full bg-[#2563EB] flex-shrink-0" />
                 Archive inactive codes to keep the access list lean and reduce
                 scanning noise.
               </li>
@@ -446,7 +512,7 @@ export default function QRCodeGeneratorPage() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={fetchWorkers}
+                  onClick={() => fetchWorkers(workersPagination.page, workersPagination.pageSize)}
                   disabled={isWorkersLoading}
                   className={`rounded-full border px-4 py-2 text-xs font-medium transition ${
                     isWorkersLoading
@@ -475,10 +541,11 @@ export default function QRCodeGeneratorPage() {
                     <button
                       type="button"
                       onClick={() => entry.qrCode && setPreviewEntry(entry)}
-                      className="flex flex-1 items-center justify-between gap-4 rounded-xl px-1 text-left transition hover:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30"
+                      disabled={!entry.qrCode}
+                      className="flex flex-1 items-center justify-between gap-4 rounded-xl px-1 text-left transition hover:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-white shadow-sm overflow-hidden">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-white shadow-sm overflow-hidden flex-shrink-0">
                           {entry.qrCode ? (
                             <Image
                               src={entry.qrCode}
@@ -516,7 +583,7 @@ export default function QRCodeGeneratorPage() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-shrink-0">
                         {entry.status && (
                           <span className="rounded-full bg-[#DCFCE7] px-2 py-[2px] text-[10px] font-medium text-[#15803D]">
                             {entry.status}

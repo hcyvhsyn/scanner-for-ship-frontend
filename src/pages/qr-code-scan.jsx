@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-const apiBaseUrl = process.env.prodNEXT_PUBLIC_BASE_API_URL;
+const apiBaseUrl = process.env.NEXT_PUBLIC_BASE_API_URL;
 const TOKEN_STORAGE_KEY = "kds-token";
 
 const getFeedbackStatus = (text) => {
@@ -13,76 +13,93 @@ const getFeedbackStatus = (text) => {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\u0131/g, "i");
-  const errorTokens = ["error", "fail", "not found", "not match", "tapilmadi"];
-  const isError = errorTokens.some((token) => normalized.includes(token));
+
+  const errTokens = ["error", "fail", "not found", "not match", "tapilmadi"];
+  const isErr = errTokens.some((t) => normalized.includes(t));
+
   return {
-    colorClass: isError ? "text-red-500" : "text-[#0C9A4B]",
-    prefix: isError ? "Alert:" : "Success:",
+    colorClass: isErr ? "text-red-500" : "text-[#0C9A4B]",
+    prefix: isErr ? "Alert:" : "Success:",
   };
 };
 
-const requestCameraAccess = async () => {
-  if (typeof window === "undefined") {
-    throw new Error("Window context is unavailable.");
-  }
+// 🟢 TOKEN NORMALIZER — ən vacib hissə
+const normalizeToken = (tokenValue) => {
+  if (!tokenValue) return "";
+  const trimmed = tokenValue.trim();
+  if (!trimmed) return "";
 
-  if (!navigator?.mediaDevices?.getUserMedia) {
-    throw new Error("This browser does not support camera access.");
-  }
+  // artıq Bearer ilə gəlirsə toxunmuruq
+  if (trimmed.toLowerCase().startsWith("bearer ")) return trimmed;
+
+  return `Bearer ${trimmed}`;
+};
+
+const requestCameraAccess = async () => {
+  if (typeof window === "undefined") throw new Error("Window unavailable.");
+
+  if (!navigator?.mediaDevices?.getUserMedia)
+    throw new Error("Camera is not supported on this browser.");
 
   const isSecure =
     window.isSecureContext || window.location.hostname === "localhost";
-  if (!isSecure) {
-    throw new Error(
-      "Camera access requires HTTPS or running the app on localhost."
-    );
-  }
+
+  if (!isSecure)
+    throw new Error("Camera requires HTTPS or a localhost environment.");
 
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { facingMode: "environment" },
   });
-  stream.getTracks().forEach((track) => track.stop());
+
+  stream.getTracks().forEach((t) => t.stop());
 };
 
 export default function QRCodeScanPage() {
   const router = useRouter();
+
+  const [authToken, setAuthToken] = useState("");
   const [isScanning, setIsScanning] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [scanMessage, setScanMessage] = useState("");
   const [scanResult, setScanResult] = useState("");
-  const [lastScanTime, setLastScanTime] = useState("");
   const [scanFeedback, setScanFeedback] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [authToken, setAuthToken] = useState("");
+  const [lastScanTime, setLastScanTime] = useState("");
+
   const html5QrCodeRef = useRef(null);
-  const errorNotifiedRef = useRef(false);
   const isProcessingRef = useRef(false);
-  const [
-    { colorClass: feedbackClass, prefix: feedbackPrefix },
-    setFeedbackMeta,
-  ] = useState({ colorClass: "", prefix: "" });
+  const errorNotifiedRef = useRef(false);
+
+  const [{ colorClass: feedbackClass, prefix: feedbackPrefix }, setFeedbackMeta] =
+    useState({ colorClass: "", prefix: "" });
 
   useEffect(() => {
     setFeedbackMeta(getFeedbackStatus(scanFeedback));
   }, [scanFeedback]);
 
+  // 🟢 TOKEN LOAD
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    let stored =
+      window.localStorage.getItem(TOKEN_STORAGE_KEY) ||
+      window.sessionStorage.getItem(TOKEN_STORAGE_KEY);
+
+    if (stored) {
+      setAuthToken(stored);
+      return;
+    }
+
+    // URL token
     const queryToken =
       typeof router.query.token === "string" ? router.query.token : null;
 
     if (queryToken) {
       setAuthToken(queryToken);
-      window.sessionStorage?.setItem(TOKEN_STORAGE_KEY, queryToken);
-      window.localStorage?.setItem(TOKEN_STORAGE_KEY, queryToken);
+      window.localStorage.setItem(TOKEN_STORAGE_KEY, queryToken);
       return;
     }
 
-    const storedToken =
-      window.sessionStorage?.getItem(TOKEN_STORAGE_KEY) ||
-      window.localStorage?.getItem(TOKEN_STORAGE_KEY);
-    if (storedToken) {
-      setAuthToken(storedToken);
-    }
+    router.push("/login");
   }, [router.query.token]);
 
   const buildFeedbackClasses = useCallback(
@@ -95,8 +112,8 @@ export default function QRCodeScanPage() {
       try {
         await html5QrCodeRef.current.stop();
         await html5QrCodeRef.current.clear();
-      } catch (error) {
-        console.warn("Unable to stop the camera stream", error);
+      } catch (e) {
+        console.warn("Camera stop error:", e);
       } finally {
         html5QrCodeRef.current = null;
       }
@@ -105,44 +122,46 @@ export default function QRCodeScanPage() {
   }, []);
 
   useEffect(() => {
-    return () => {
-      stopScanner();
-    };
+    return () => stopScanner();
   }, [stopScanner]);
 
+  // 🟢 SCAN REQUEST
   const handleScanResult = useCallback(
     async (decodedText) => {
-      if (isProcessingRef.current) {
+      if (isProcessingRef.current) return;
+      isProcessingRef.current = true;
+
+      const effectiveToken = normalizeToken(authToken);
+
+      if (!effectiveToken) {
+        setScanFeedback("Authentication required.");
+        router.push("/login");
         return;
       }
-      isProcessingRef.current = true;
-      setScanResult(decodedText);
-      setScanMessage("QR code captured, sending to the server...");
+
+      setIsSubmitting(true);
+      setScanMessage("QR captured, sending to server...");
       setScanFeedback("");
+      setScanResult(decodedText);
+
       setLastScanTime(
         new Date().toLocaleTimeString("en-US", {
           hour: "2-digit",
           minute: "2-digit",
         })
       );
-      setIsSubmitting(true);
 
       try {
-        if (!apiBaseUrl) {
-          throw new Error("API base URL is missing. Please check .env.prodlocal.");
-        }
-        if (!authToken) {
-          throw new Error("Authentication credentials were not provided.");
-        }
-
         const endpoint = new URL("scan/", apiBaseUrl).toString();
+
         const { data } = await axios.post(
           endpoint,
           { qr_text: decodedText },
           {
             headers: {
+              Authorization: effectiveToken,
+              "ngrok-skip-browser-warning": "true",
               "Content-Type": "application/json",
-              Authorization: authToken,
             },
           }
         );
@@ -155,49 +174,54 @@ export default function QRCodeScanPage() {
           data?.name ||
           null;
 
-        if (workerName) {
-          setScanResult(workerName);
+        if (workerName) setScanResult(workerName);
+
+        setScanFeedback(data?.message || data?.detail || "Scan successful.");
+      } catch (err) {
+        let msg = "Unexpected error.";
+
+        if (axios.isAxiosError(err)) {
+          if (err.response?.status === 401) {
+            msg = "Authentication failed. Redirecting...";
+            localStorage.removeItem(TOKEN_STORAGE_KEY);
+            sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+            setTimeout(() => router.push("/login"), 1200);
+          } else {
+            msg =
+              err.response?.data?.detail ||
+              err.response?.data?.message ||
+              err.message;
+          }
+        } else if (err instanceof Error) {
+          msg = err.message;
         }
 
-        const successMessage =
-          data?.message || "QR code successfully recorded.";
-        const detail = data?.detail;
-
-        if (workerName) {
-          setScanFeedback(successMessage);
-        } else if (detail) {
-          setScanFeedback(detail);
-        } else {
-          setScanFeedback(successMessage);
-        }
-      } catch (error) {
-        const message = axios.isAxiosError(error)
-          ? typeof error.response?.data === "string"
-            ? error.response.data
-            : error.response?.data?.detail ||
-              error.response?.data?.message ||
-              error.message
-          : error instanceof Error
-          ? error.message
-          : "An unexpected error occurred while processing the QR code.";
-        setScanFeedback(message);
+        setScanFeedback(msg);
       } finally {
         setIsSubmitting(false);
         await stopScanner();
         isProcessingRef.current = false;
       }
     },
-    [stopScanner]
+    [authToken, router, stopScanner]
   );
 
+  // 🟢 START CAMERA
   const startScanner = async () => {
     if (isScanning || isSubmitting) return;
 
-    setScanMessage("Preparing the camera...");
+    const effectiveToken = normalizeToken(authToken);
+    if (!effectiveToken) {
+      setScanMessage("Authentication required. Redirecting...");
+      setTimeout(() => router.push("/login"), 1200);
+      return;
+    }
+
+    setScanMessage("Starting camera...");
     setScanResult("");
     setScanFeedback("");
-    errorNotifiedRef.current = false;
     isProcessingRef.current = false;
+    errorNotifiedRef.current = false;
     setIsScanning(true);
 
     try {
@@ -209,26 +233,19 @@ export default function QRCodeScanPage() {
       await html5QrCodeRef.current.start(
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => {
-          handleScanResult(decodedText);
-        },
-        (errorMessage) => {
+        (decodedText) => handleScanResult(decodedText),
+        () => {
           if (!errorNotifiedRef.current) {
-            setScanMessage("Unable to read the code, retrying...");
+            setScanMessage("Unable to read QR, retrying...");
             errorNotifiedRef.current = true;
           }
         }
       );
 
-      setScanMessage("Camera is active, align the QR inside the frame.");
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "An unexpected error occurred while activating the camera.";
-      setScanMessage(message);
+      setScanMessage("Camera active. Aim QR inside the frame.");
+    } catch (e) {
+      setScanMessage(e.message || "Failed to activate camera.");
       await stopScanner();
-      setIsScanning(false);
     }
   };
 
@@ -237,10 +254,11 @@ export default function QRCodeScanPage() {
     await startScanner();
   };
 
+  // 🟢 UI
   return (
     <div className="min-h-screen bg-[#EEF2FF]">
       <div className="mx-auto max-w-5xl px-6 py-10 space-y-8">
-        <header className="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-black/5 flex flex-wrap items-center justify-between gap-4">
+        <header className="rounded-2xl bg-white p-6 shadow-lg flex justify-between">
           <div>
             <p className="text-sm uppercase tracking-[0.3em] text-[#98A2B3]">
               Live validation
@@ -248,24 +266,19 @@ export default function QRCodeScanPage() {
             <h1 className="text-2xl font-semibold text-[#0F172A]">
               Scan QR badges in real time
             </h1>
-            <p className="text-sm text-[#475467]">
-              Use any modern browser to record entries and exits instantly. All
-              scans are pushed to the attendance log in seconds.
-            </p>
           </div>
+
           <Link
             href="/main"
-            className="rounded-full border border-[#D0D5DD] px-4 py-2 text-xs font-semibold text-[#0F172A] hover:bg-[#F8FAFC]"
+            className="rounded-full border px-4 py-2 text-xs font-semibold"
           >
             Back to overview
           </Link>
         </header>
 
-        <section className="rounded-3xl bg-white p-6 shadow-xl ring-1 ring-black/5 flex flex-col">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-[#0F172A]">
-              Session status
-            </h2>
+        <section className="rounded-3xl bg-white p-6 shadow-xl">
+          <div className="flex justify-between mb-4">
+            <h2 className="text-base font-semibold">Session status</h2>
             <span
               className={`rounded-full px-3 py-1 text-xs font-semibold ${
                 isScanning
@@ -277,41 +290,38 @@ export default function QRCodeScanPage() {
             </span>
           </div>
 
-          <div className="flex-1 rounded-2xl border border-dashed border-[#CBD5F5] bg-[#F7F9FD] px-4 py-6 flex flex-col items-center justify-center gap-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-2 shadow">
-              <div
-                id="qr-reader"
-                className="h-64 w-full overflow-hidden rounded-xl bg-[#0F172A]/5"
-              />
+          <div className="rounded-2xl border bg-[#F7F9FD] px-4 py-6 flex flex-col items-center">
+            <div className="w-full max-w-md bg-white p-2 rounded-xl shadow">
+              <div id="qr-reader" className="h-64 w-full rounded-xl bg-black/10" />
             </div>
 
-            <p className="text-center text-sm font-medium text-[#0F172A]">
-              Aim the device at the employee&apos;s QR badge
-            </p>
-            <p className="text-center text-xs text-[#475467]">{scanMessage}</p>
+            <p className="text-sm font-medium mt-3">{scanMessage}</p>
+
             {scanFeedback && (
-              <p className={buildFeedbackClasses("text-center text-xs")}>
+              <p className={buildFeedbackClasses("text-xs text-center mt-1")}>
                 {feedbackPrefix} {scanFeedback}
               </p>
             )}
 
-            <div className="flex w-full flex-col gap-3 sm:flex-row">
+            <div className="flex w-full gap-3 mt-4">
               <button
-                type="button"
                 onClick={isScanning ? stopScanner : startScanner}
-                className={`w-full rounded-full px-4 py-3 text-sm font-semibold text-white transition ${
-                  isScanning
-                    ? "bg-[#B42318] hover:bg-[#991B1B]"
-                    : "bg-[#2563EB] hover:bg-[#1D4ED8]"
+                disabled={isSubmitting}
+                className={`w-full rounded-full px-4 py-3 text-sm font-semibold text-white ${
+                  isScanning ? "bg-[#B42318]" : "bg-[#2563EB]"
                 }`}
               >
-                {isScanning ? "Stop scanning" : "Start scanning"}
+                {isSubmitting
+                  ? "Processing..."
+                  : isScanning
+                  ? "Stop scanning"
+                  : "Start scanning"}
               </button>
+
               {isScanning && (
                 <button
-                  type="button"
                   onClick={restartScanner}
-                  className="w-full rounded-full border border-[#2563EB] px-4 py-3 text-sm font-semibold text-[#2563EB] hover:bg-[#2563EB] hover:text-white transition sm:w-auto"
+                  className="w-full rounded-full border px-4 py-3 text-sm font-semibold"
                 >
                   Restart scanner
                 </button>
@@ -319,38 +329,16 @@ export default function QRCodeScanPage() {
             </div>
           </div>
 
-          <div className="mt-4 rounded-2xl bg-[#F8FAFC] p-4 text-sm">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#98A2B3]">
-              Last scan
-            </p>
+          <div className="mt-4 bg-[#F8FAFC] p-4 rounded-xl">
+            <p className="text-xs font-semibold uppercase">Last scan</p>
+
             {scanResult ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-base font-semibold text-[#0F172A] break-all">
-                      {scanResult}
-                    </p>
-                    {lastScanTime && (
-                      <p className="text-xs text-[#475467]">
-                        Time: {lastScanTime}
-                      </p>
-                    )}
-                  </div>
-                  <span className="inline-flex rounded-full bg-[#DCFCE7] px-3 py-[4px] text-[11px] font-semibold text-[#15803D]">
-                    Recorded
-                  </span>
-                </div>
-                {scanFeedback && (
-                  <p className={buildFeedbackClasses("mt-2 text-xs")}>
-                    {feedbackPrefix} {scanFeedback}
-                  </p>
-                )}
-              </>
+              <div>
+                <p className="text-base font-semibold">{scanResult}</p>
+                <p className="text-xs text-gray-500">Time: {lastScanTime}</p>
+              </div>
             ) : (
-              <p className="text-xs text-[#98A2B3]">
-                No QR code has been scanned yet. The last result will be shown
-                here.
-              </p>
+              <p className="text-xs text-gray-400">No QR scanned yet.</p>
             )}
           </div>
         </section>
