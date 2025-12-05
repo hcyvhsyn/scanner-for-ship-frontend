@@ -69,8 +69,10 @@ export default function QRCodeScanPage() {
   const isProcessingRef = useRef(false);
   const errorNotifiedRef = useRef(false);
 
-  const [{ colorClass: feedbackClass, prefix: feedbackPrefix }, setFeedbackMeta] =
-    useState({ colorClass: "", prefix: "" });
+  const [
+    { colorClass: feedbackClass, prefix: feedbackPrefix },
+    setFeedbackMeta,
+  ] = useState({ colorClass: "", prefix: "" });
 
   useEffect(() => {
     setFeedbackMeta(getFeedbackStatus(scanFeedback));
@@ -100,7 +102,7 @@ export default function QRCodeScanPage() {
     }
 
     router.push("/login");
-  }, [router.query.token]);
+  }, [router, router.query.token]);
 
   const buildFeedbackClasses = useCallback(
     (base) => (feedbackClass ? `${base} ${feedbackClass}` : base),
@@ -254,62 +256,73 @@ export default function QRCodeScanPage() {
     await startScanner();
   };
 
+  const sessionStatusCopy = isSubmitting
+    ? "Transmitting scan..."
+    : isScanning
+    ? "Camera streaming"
+    : "Session idle";
+
+  const helperMessage =
+    scanMessage ||
+    "Launch the camera to align a QR credential inside the guide box.";
+
+  const apiFeedbackCopy = scanFeedback
+    ? `${feedbackPrefix} ${scanFeedback}`
+    : "Awaiting a response from the validation API.";
+
+  const hasLastScan = Boolean(scanResult);
+
   // 🟢 UI
   return (
     <div className="min-h-screen bg-[#EEF2FF]">
-      <div className="mx-auto max-w-5xl px-6 py-10 space-y-8">
-        <header className="rounded-2xl bg-white p-6 shadow-lg flex justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-[0.3em] text-[#98A2B3]">
-              Live validation
-            </p>
-            <h1 className="text-2xl font-semibold text-[#0F172A]">
-              Scan QR badges in real time
-            </h1>
-          </div>
+      <div className="mx-auto max-w-6xl px-6 py-10 space-y-10">
+     
 
-          <Link
-            href="/main"
-            className="rounded-full border px-4 py-2 text-xs font-semibold"
-          >
-            Back to overview
-          </Link>
-        </header>
-
-        <section className="rounded-3xl bg-white p-6 shadow-xl">
-          <div className="flex justify-between mb-4">
-            <h2 className="text-base font-semibold">Session status</h2>
-            <span
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                isScanning
-                  ? "bg-[#E1F9EC] text-[#15803D]"
-                  : "bg-[#F4F4F5] text-[#4B5563]"
-              }`}
-            >
-              {isScanning ? "Camera online" : "Camera idle"}
-            </span>
-          </div>
-
-          <div className="rounded-2xl border bg-[#F7F9FD] px-4 py-6 flex flex-col items-center">
-            <div className="w-full max-w-md bg-white p-2 rounded-xl shadow">
-              <div id="qr-reader" className="h-64 w-full rounded-xl bg-black/10" />
+        <section className="grid gap-8 lg:grid-cols-[1.1fr,0.9fr]">
+          <div className="rounded-3xl bg-white p-6 shadow-xl ring-1 ring-black/5 flex flex-col gap-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              
+              <span
+                className={`rounded-full px-4 py-1 text-xs font-semibold ${
+                  isScanning
+                    ? "bg-[#E1F9EC] text-[#15803D]"
+                    : "bg-[#F4F4F5] text-[#4B5563]"
+                }`}
+              >
+                {isScanning ? "Camera online" : "Camera idle"}
+              </span>
             </div>
 
-            <p className="text-sm font-medium mt-3">{scanMessage}</p>
+            <div className="rounded-2xl border border-dashed border-[#CBD5F5] bg-[#F7F9FD] p-5 space-y-4">
+              <div className="w-full rounded-2xl bg-white/90 p-3 shadow-inner">
+                <div
+                  id="qr-reader"
+                  className="h-72 w-full rounded-xl bg-[#0F172A]/5"
+                />
+              </div>
+              <div className="space-y-1 text-sm">
+                <p className="font-semibold text-[#0F172A]">{helperMessage}</p>
+                {scanFeedback ? (
+                  <p className={buildFeedbackClasses("text-xs")}>
+                    {apiFeedbackCopy}
+                  </p>
+                ) : (
+                  <p className="text-xs text-[#98A2B3]">{apiFeedbackCopy}</p>
+                )}
+              </div>
+            </div>
 
-            {scanFeedback && (
-              <p className={buildFeedbackClasses("text-xs text-center mt-1")}>
-                {feedbackPrefix} {scanFeedback}
-              </p>
-            )}
+           
 
-            <div className="flex w-full gap-3 mt-4">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={isScanning ? stopScanner : startScanner}
                 disabled={isSubmitting}
-                className={`w-full rounded-full px-4 py-3 text-sm font-semibold text-white ${
-                  isScanning ? "bg-[#B42318]" : "bg-[#2563EB]"
-                }`}
+                className={`w-full rounded-full px-4 py-3 text-sm font-semibold text-white shadow transition ${
+                  isScanning
+                    ? "bg-[#B42318] hover:bg-[#991B1B]"
+                    : "bg-[#2563EB] hover:bg-[#1D4ED8]"
+                } ${isSubmitting ? "cursor-not-allowed opacity-80" : ""}`}
               >
                 {isSubmitting
                   ? "Processing..."
@@ -317,29 +330,58 @@ export default function QRCodeScanPage() {
                   ? "Stop scanning"
                   : "Start scanning"}
               </button>
-
-              {isScanning && (
-                <button
-                  onClick={restartScanner}
-                  className="w-full rounded-full border px-4 py-3 text-sm font-semibold"
-                >
-                  Restart scanner
-                </button>
-              )}
+              <button
+                onClick={restartScanner}
+                disabled={!isScanning}
+                className={`w-full rounded-full border px-4 py-3 text-sm font-semibold transition ${
+                  isScanning
+                    ? "border-[#2563EB] text-[#2563EB] hover:bg-[#2563EB] hover:text-white"
+                    : "border-[#E4E7EC] text-[#98A2B3] cursor-not-allowed"
+                }`}
+              >
+                Restart scanner
+              </button>
             </div>
           </div>
 
-          <div className="mt-4 bg-[#F8FAFC] p-4 rounded-xl">
-            <p className="text-xs font-semibold uppercase">Last scan</p>
-
-            {scanResult ? (
-              <div>
-                <p className="text-base font-semibold">{scanResult}</p>
-                <p className="text-xs text-gray-500">Time: {lastScanTime}</p>
+          <div className="space-y-6">
+            <div className="rounded-3xl bg-white p-6 shadow-xl ring-1 ring-black/5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-[#98A2B3]">
+                    Last detection
+                  </p>
+                  <h3 className="text-lg font-semibold text-[#0F172A]">
+                    {hasLastScan ? scanResult : "Awaiting first scan"}
+                  </h3>
+                  <p className="text-sm text-[#475467]">
+                    {hasLastScan
+                      ? "Latest badge recorded from the live session."
+                      : "Once a QR is validated, the employee details appear here."}
+                  </p>
+                </div>
+                {hasLastScan && (
+                  <span className="inline-flex items-center gap-2 rounded-full bg-[#DCFCE7] px-4 py-1 text-xs font-semibold text-[#15803D]">
+                    <span className="h-2 w-2 rounded-full bg-[#22C55E]" />
+                    Recorded
+                  </span>
+                )}
               </div>
-            ) : (
-              <p className="text-xs text-gray-400">No QR scanned yet.</p>
-            )}
+
+              <div className="rounded-2xl bg-[#F8FAFC] p-4 text-sm text-[#475467] space-y-3">
+                <div className="flex items-center justify-between text-xs text-[#98A2B3]">
+                  <span>Timestamp</span>
+                  <span>{lastScanTime || "—"}</span>
+                </div>
+                <div className="rounded-2xl border border-[#E4E7EC] bg-white px-4 py-3 text-xs">
+                  {scanFeedback
+                    ? apiFeedbackCopy
+                    : "API responses will be logged here once a QR is validated."}
+                </div>
+              </div>
+            </div>
+
+         
           </div>
         </section>
       </div>
