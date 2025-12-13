@@ -31,7 +31,7 @@ export default function ListPage() {
   });
 
   const [authToken, setAuthToken] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState(null);
+
 
   // --- TOKEN NORMALIZER ---
   const normalizeToken = useCallback((tokenValue) => {
@@ -63,7 +63,7 @@ export default function ListPage() {
     if (stored) setAuthToken(normalizeToken(stored));
   }, [router.query.token, normalizeToken]);
 
-  const closeDeleteModal = () => setDeleteTarget(null);
+
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
@@ -115,7 +115,7 @@ export default function ListPage() {
     }
 
     setScans((prev) => prev.filter((entry) => entry.id !== deleteTarget.id));
-    setDeleteTarget(null);
+
   };
 
   // ================================
@@ -305,15 +305,7 @@ export default function ListPage() {
                     <td className="py-2 px-2 text-[11px]">
                       {formatTime(item.exit_time)}
                     </td>
-                    <td className="py-2 pr-4 text-[11px] text-right">
-                      <button
-                        type="button"
-                        onClick={() => setDeleteTarget(item)}
-                        className="inline-flex items-center gap-1 rounded-full border border-[#FECACA] px-3 py-1 text-[11px] font-semibold text-[#B42318] transition hover:bg-[#FEE2E2]"
-                      >
-                        Delete
-                      </button>
-                    </td>
+                    
                   </tr>
                 ))}
 
